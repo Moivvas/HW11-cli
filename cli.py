@@ -1,7 +1,8 @@
-from ab_classes import AddressBook, Name, Phone, Record, Birtday
+from ab_classes import AddressBook, Name, Phone, Record, Birthday
+
 
 ab = AddressBook()
-
+ab.load_data()
 
 def input_error(func):
     def wrapper(*args):
@@ -28,7 +29,7 @@ def add(*args):
     elif len(args) == 3:
         name = Name(args[0])
         phone = Phone(args[1])
-        birthday = Birtday(args[2])
+        birthday = Birthday(args[2])
         rec: Record = ab.data.get(str(name))
         if rec:
             return rec.add_phone(phone)
@@ -73,7 +74,7 @@ def unknow_command(*args):
     return ' Unknow command'
 
 def show_all(*args):
-    return ab
+    return ab.load_data()
 
 def birthday(*args):
     name = Name(args[0])
@@ -101,12 +102,16 @@ def parser(text:str):
     return unknow_command, []
 
 def main():
+    
+    
     print('Print "Hello" to start')
     while True:
         user_input = input('>>>')
         command, data = parser(user_input)
         result = command(*data)
         print(result)
+        if command in (add, change_phone, delete_record):
+            ab.save_data()
         if command == exit_command:
             break
         

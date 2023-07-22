@@ -1,7 +1,8 @@
 from collections import UserDict
 from collections.abc import Iterator
 from datetime import datetime, timedelta
-import re
+import re,json
+from dataclasses import asdict
 
 
 class Field:
@@ -34,7 +35,7 @@ class Phone(Field):
 
 
 
-class Birtday(Field):
+class Birthday(Field):
 
     @property
     def value(self):
@@ -43,28 +44,39 @@ class Birtday(Field):
     @value.setter
     def value(self, nv):
         input_date_true = r"\d{1,2}\.\d{1,2}\.\d{4}"
-        if re.match(input_date_true, nv):
+        if nv == 'None':
+            self._value = None
+        elif re.match(input_date_true, nv):
             self._value = nv
         else:
             raise ValueError("Invalid birthday! Please input in format d.m.y")
 
 
 class Record:
-    def __init__(self, name: Name, phone: Phone = None, birthday: Birtday = None):
+    def __init__(self, name: Name, phone: Phone = None, birthday: Birthday = None):
         self.name = name
         self.phones = []
         self.birthday = birthday
         if phone:
             self.phones.append(phone)
 
-    def add_phone(self, phone: Phone):
-        if phone.value not in [p.value for p in self.phones]:
+    def add_phone(self, phone: Phone, from_load=False):
+        if not from_load and phone.value in [p.value for p in self.phones]:
+            return f'{phone} already exists in {self.name}`s phones'
+        else:
             self.phones.append(phone)
-            return f'phone {phone} add to {self.name}'
-        return f'{phone} already exist in {self.name}`s phones'
+            return f'Phone {phone} added to {self.name}'    
     
     def __str__(self) -> str:
-        return f'{self.name}: {", ".join(str(p) for p in self.phones)}; Birthday: {self.birthday}'
+
+        phones = ", ".join(p.value for p in self.phones)
+
+        if self.birthday is None:
+            birthday = 'Unknown'
+        else:
+            birthday = self.birthday.value
+
+        return f'{self.name}: {phones}; Birthday: {birthday}'
 
     def change_phone(self, old_phone: Phone, new_phone: Phone):
         if new_phone.value in [p.value for p in self.phones]:
@@ -96,9 +108,7 @@ class Record:
             
 class AddressBook(UserDict):
 
-    def __init__(self, N=1):
-        super().__init__()
-        self.N = N
+    
 
     def add_record(self, record: Record):
         self.data[str(record.name)] = record
@@ -126,45 +136,49 @@ class AddressBook(UserDict):
                 return '\n'.join(results)
             return "No matching records found."
     
-    def __iter__(self):
-        self.items = list(self.data.items())
-        self.stop_iter = len(self.items) // self.N
-        self.start_iter = 0
-        self.start = 0
-        self.stop = self.N
-        return self
+    def save_data(self, filename = 'phone_book.json'):
+        # Серіалізуємо записи
+        records = {}
+        for name, record in self.data.items():
+            if record.birthday is None:
+                birthday = 'None'
+            else:  
+                birthday = record.birthday.value
+            records[name] = {
+                'name': str(record.name),
+                'phones': [str(phone) for phone in record.phones],
+                'birthday': birthday
+                }
 
-    def __next__(self):
-        if self.start_iter < self.stop_iter:
-            result = self.items[self.start:self.stop]
-            self.start += self.N
-            self.stop += self.N
-            self.start_iter += 1
-            return ', '.join([f'{key}: {str(value)}' for key, value in result])
-        else:
-            raise StopIteration
+        with open(filename, 'w') as f:
+            json.dump({"data": records}, f)
 
-    
+    @classmethod
+    def load_data(cls, filename='phone_book.json'):
+        with open(filename) as f:
+            data = json.load(f)
 
-if __name__ =="__main__":
-    ab = AddressBook()
-    name = Name('bill')
-    phone = Phone('23456')
-    rec = Record(name, phone)
-    name1 = Name('LOL')
-    phone1 = Phone('11111')
-    rec1 = Record(name, phone)
-    ab[name] = phone
-    ab[name1] = phone1
+        ab = cls()
 
-    name3 = Name('GFF')
-    phone3 = Phone('999999')
-    rec3 = Record(name, phone)
-    name4 = Name('NONO')
-    phone4 = Phone('00000')
-    rec4 = Record(name, phone)
-    ab[name3] = phone3
-    ab[name4] = phone4
-    
-    for i in ab:
-        print(i)
+        # Десеріалізуємо записи    
+        for name, rec_dict in data['data'].items():
+            name = Name(name)
+            phones = [Phone(p) for p in rec_dict['phones']]
+            birthday = None
+            if 'birthday' in rec_dict and rec_dict['birthday'] != 'None':
+                birthday = Birthday(rec_dict['birthday'])
+
+            # Перевірка, чи існує запис з таким ім'ям в AddressBook
+            if name in ab.data:
+                record = ab.data[name]
+                for phone in phones:
+                    record.add_phone(phone)
+            else:
+                # Якщо запису немає, додати новий
+                ab.add_record(Record(name, phones[0], birthday))
+
+                # Додати інші номери телефонів (якщо вони є)
+                for phone in phones[1:]:
+                    ab[name].add_phone(phone)
+
+        return ab
